@@ -1,0 +1,9 @@
+# Ignorar entornos virtuales
+.venv/
+__pycache__/
+
+# Ignorar archivos sensibles
+.env
+.env.production
+# Ignorar logs
+*.log
