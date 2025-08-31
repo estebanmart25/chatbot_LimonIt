@@ -251,33 +251,19 @@ def process_user_message(db: Session, form: dict):
 def process_chatwoot_event(db: Session, payload: dict):
     event = payload.get("event")
     logging.info(f"Procesando evento de Chatwoot: {event}")
-
-    # --- Mensajes entrantes de usuario ---
-    if event == "message_created" and payload.get("message_type") == "incoming" and not payload.get("private"):
+    
+    if event == "message_created" and payload.get("message_type") == "outgoing" and not payload.get("private"):
         content = payload.get("content")
         source_id = payload.get("conversation", {}).get("contact_inbox", {}).get("source_id")
         if content and source_id:
-            # Construir número de WhatsApp del usuario
-            try:
-                phone_number_from_cw = f"whatsapp:+{source_id.split(':')[1]}"
-            except IndexError:
-                logging.error(f"No se pudo extraer el número de source_id: {source_id}")
-                return
-
-            # Buscar cliente en DB y procesar mensaje
+            phone_number_from_cw = f"whatsapp:+{source_id.split(':')[1]}"
             customer = db.query(Customer).filter(Customer.phone == phone_number_from_cw).first()
             if customer:
-                process_user_message(db, {"From": customer.phone, "Body": content})
-            else:
-                logging.warning(f"Cliente no encontrado para {phone_number_from_cw}")
-
-    # --- Cambio de estado de conversación ---
+                services.send_message(to=customer.phone, body=content)
+    
     elif event == "conversation_status_changed" and payload.get("status") == "resolved":
         conv_id = payload.get("id")
-        ticket = db.query(Ticket).filter(
-            Ticket.chatwoot_conversation_id == conv_id,
-            Ticket.status == 'open'
-        ).order_by(Ticket.created_at.desc()).first()
+        ticket = db.query(Ticket).filter(Ticket.chatwoot_conversation_id == conv_id, Ticket.status == 'open').order_by(Ticket.created_at.desc()).first()
         if ticket:
             ticket.status = "resolved"
             ticket.closed_at = datetime.datetime.utcnow()
