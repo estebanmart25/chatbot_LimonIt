@@ -87,16 +87,31 @@ def send_message(to: str, body: str) -> bool:
     # Si llegamos aquí, algo falló
     logging.error(f"Fallo al enviar mensaje a {to}. Revisar configuración del Sandbox de WhatsApp.")
     return False
+
 def cw_ensure_contact(wa_id: str, name: str | None = None) -> dict | None:
     search_url = f"{CW_BASE}/api/v1/accounts/{CW_ACC}/contacts/search"
-    params = {"q": wa_id.replace("whatsapp:", "")}
+    phone_number = wa_id.replace("whatsapp:", "")
+
+    # Asegurarse de que el número de teléfono tenga el formato E.164 con un '+' inicial
+    if not phone_number.startswith('+'):
+        phone_number = f"+{phone_number}"
+
+    params = {"q": phone_number}
+
     try:
         r = requests.get(search_url, params=params, headers=CW_HEADERS, timeout=10)
         r.raise_for_status()
         data = r.json()
-        if data['meta']['count'] > 0: return data['payload'][0]
+        if data['meta']['count'] > 0:
+            return data['payload'][0]
+
         create_url = f"{CW_BASE}/api/v1/accounts/{CW_ACC}/contacts"
-        payload = {"inbox_id": int(CW_INBOX), "name": name or wa_id, "phone_number": wa_id.replace("whatsapp:", "")}
+        payload = {
+            "inbox_id": int(CW_INBOX),
+            "name": name or wa_id,
+            "phone_number": phone_number  # Usar el número de teléfono formateado
+        }
+
         r_create = requests.post(create_url, json=payload, headers=CW_HEADERS, timeout=10)
         r_create.raise_for_status()
         return r_create.json()['payload']
