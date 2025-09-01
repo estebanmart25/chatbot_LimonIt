@@ -66,12 +66,19 @@ def match_product(user_text: str) -> str | None:
 
 def handoff_to_agent(db: Session, customer: Customer, category: str, session_data: dict):
     logging.info(f"Handoff -> cliente {customer.id}, categoría '{category}'")
+    
+    # Asegurarse de que el contacto exista
     contact_payload = services.cw_ensure_contact(customer.phone, customer.name)
     if not contact_payload:
         services.send_message(to=customer.phone, body="Hubo un problema al contactar con nuestros sistemas. Intentá nuevamente.")
         return
 
-    contact_id = contact_payload["id"]
+    contact_id = contact_payload.get("id")
+    if not contact_id:
+        logging.error(f"No se encontró 'id' en el contacto: {contact_payload}")
+        services.send_message(to=customer.phone, body="Hubo un problema al iniciar la conversación. Intentá nuevamente.")
+        return
+
     inbox_id = int(services.CW_INBOX)
     source_id = f"whatsapp:{customer.phone.replace('whatsapp:+', '')}"
     conversation_id = services.cw_find_or_create_conversation(contact_id, inbox_id, source_id)
@@ -113,10 +120,13 @@ def handoff_to_agent(db: Session, customer: Customer, category: str, session_dat
 
     # Dejar al usuario en estado 'handoff' y limpiar datos temporales
     session = db.query(SessionState).filter(SessionState.customer_id == customer.id).first()
-    session.state = "handoff"
-    session.data_json = '{}'  # limpia para próximas consultas
-    db.commit()
-    logging.info("Handoff completado y sesión limpiada.")
+    if session:
+        session.state = "handoff"
+        session.data_json = '{}'  # limpia para próximas consultas
+        db.commit()
+        logging.info("Handoff completado y sesión limpiada.")
+    else:
+        logging.warning(f"No se encontró sesión para cliente {customer.id}")
 
 def process_user_message(db: Session, form: dict):
     from_wa = form.get("From")
